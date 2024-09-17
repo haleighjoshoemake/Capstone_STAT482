@@ -1,0 +1,497 @@
+---
+---
+---
+
+# Forest Loss and the Rise of Malaria Incidence Rate in Sub-Saharan Africa
+
+## Data Preparation
+
+```{r message=FALSE, warning=FALSE}
+setwd("~/STAT 482")
+
+library(readxl)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(reshape2)
+library(stringr)
+library(openxlsx)
+library(patchwork)
+library(purrr)
+library(GGally)
+library(plotly)
+
+
+# turn off scientific notation format output
+options(scipen = 999)
+
+# The clean_char function takes in a character and returns a number without the range in brackets and without spaces in the mean. 
+# For example, "193 232 [149 000-245 000]" becomes 193232
+clean_char = function(text){
+  return(as.numeric(gsub(" ", "", sub("\\[.*", "", text))))
+}
+```
+
+### Population per Country
+
+```{r}
+# Import Subsaharan African countries list
+countries = read_excel("~/STAT 482/subsaharan_countries.xlsx", sheet = "Countries", col_names =  TRUE)
+
+population = read_excel("~/STAT 482/Population.xls", sheet = "Data", col_names =  TRUE)
+
+# filter to get only sub-Saharan African countries
+population = population[population$`Country Name` %in% countries$country_name,]
+
+# keep only years 2000-2020, remove Indicator Name and Indicator Code cols.
+to_remove = as.character(c(1960:1999,2021:2023, "Indicator Code", "Indicator Name"))
+population = population[,!(colnames(population) %in% to_remove)]
+```
+
+### Forest Cover Data
+
+```{r message=FALSE, warning=FALSE}
+# import forest cover data by country and the sub-Saharan countries list
+forest = read.csv("forest_coverage_data_by_country.xls - Data.csv")
+
+# take out the first two rows of forest, which contain data we don't need
+forest = forest[-c(1,2),]
+
+# make the first row of the data the headers
+colnames(forest) = as.character(unlist(forest[1,]))
+forest = forest[-1,]
+
+# filter to get only sub-Saharan African countries
+forest = forest[forest$`Country Name` %in% countries$country_name,]
+
+# keep only years 2000-2020, remove Indicator Name and Indicator Code cols.
+forest = forest[,!(colnames(forest) %in% to_remove)]
+```
+
+### Malaria Case Data
+
+```{r message=FALSE}
+# import malaria case number data by country
+malaria = read_xlsx("estimated_malaria_cases.xlsx")
+
+# filter to get only Sub-saharan African countries
+malaria = malaria[malaria$`Country Name` %in% countries$country_name,]
+
+
+# loop through all numeric columns in malaria, applying clean_char function
+col_mal = colnames(malaria) # list of column names of malaria data
+for (i in 2:length(col_mal)){
+  malaria[col_mal[i]] = sapply(malaria[,i], clean_char)}
+
+
+# remove column for year 2021
+malaria = malaria[,!(colnames(malaria) %in% to_remove)]
+
+# create table with country name and country code for joining
+country_name_code = forest[,c(1:2)] 
+
+# join the country code to the malaria dataset by the country name
+malaria = left_join(malaria, country_name_code, by = "Country Name")
+```
+
+### Normalize Malaria Case Data by Population
+
+```{r}
+# Reshape to long format
+malaria_long = malaria %>%
+  pivot_longer(cols = starts_with("20"), names_to = "year", values_to = "cases")
+
+population_long = population %>%
+  pivot_longer(cols = starts_with("20"), names_to = "year", values_to = "population")
+
+# Join the data
+combined_data = malaria_long %>%
+  left_join(population_long, by = c("Country Name", "Country Code", "year"))
+
+# Normalize the data
+normalized_data = combined_data %>%
+  mutate(normalized_cases = cases / population)
+
+# Reshape back to wide format
+malaria = normalized_data %>%
+  select("Country Name", "Country Code", year, normalized_cases) %>%
+  pivot_wider(names_from = year, values_from = normalized_cases)
+```
+
+### Rainfall Data
+
+```{r}
+rainfall = read_excel("~/STAT 482/rainfall_data.xls", sheet = "Data", col_names =  TRUE) 
+
+rainfall = rainfall[rainfall$`Country Name` %in% countries$country_name,]
+rainfall = rainfall[,!(colnames(rainfall) %in% to_remove)]
+```
+
+### GDP per capita data
+
+```{r}
+gdp = read_excel("~/STAT 482/GDP_per_capita.xls", sheet = "Data", col_names = TRUE)
+
+gdp = gdp[gdp$`Country Name` %in% countries$country_name,]
+gdp = gdp[,!(colnames(gdp) %in% to_remove)]
+```
+
+### Urbanization Rate Data
+
+```{r}
+urbanization = read_excel("~/STAT 482/urbanization_rate_data.xls", sheet = "Data", col_names = TRUE)
+
+urbanization = urbanization[urbanization$`Country Name` %in% countries$country_name,]
+urbanization = urbanization[,!(colnames(urbanization) %in% to_remove)]
+```
+
+### Combine Datasets
+
+```{r}
+# reorder the 'country' variable in order of most north to most south in latitude
+countries_ordered = c("Djibouti", "Eritrea", "Sudan", "Chad", "Niger", "Mali", "Mauritania", "Senegal", "Gambia, The", "Guinea-Bissau", "Guinea", "Sierra Leone", "Liberia", "Burkina Faso", "Ghana", "Togo", "Benin", "Nigeria", "Cameroon", "Central African Republic", "South Sudan", "Ethiopia", "Somalia", "Equatorial Guinea", "Gabon", "Congo, Rep.", "Congo, Dem. Rep.", "Uganda", "Rwanda", "Burundi", "Kenya", "Tanzania", "Sao Tome and Principe", "Angola", "Zambia", "Malawi", "Mozambique", "Zimbabwe", "Namibia", "Botswana", "Eswatini", "South Africa", "Madagascar")
+
+# assign the ordered country names to malaria and forest dataset
+malaria$`Country Name` = factor(malaria$`Country Name`, levels = countries_ordered)
+forest$`Country Name` = factor(forest$`Country Name`, levels = countries_ordered)
+
+
+# reshape datasets to long format
+malaria_long = malaria %>%
+  pivot_longer(cols = starts_with("2"), names_to = "Year", values_to = "Malaria_Incidence")
+
+forest_long = forest %>%
+  pivot_longer(cols = starts_with("2"), names_to = "Year", values_to = "Forest_Cover")
+
+rainfall_long = rainfall %>%
+  pivot_longer(cols = starts_with("2"), names_to = "Year", values_to = "Rainfall_Depth")
+
+gdp_long = gdp %>%
+  pivot_longer(cols = starts_with("2"), names_to = "Year", values_to = "GDP_per_Capita")
+
+urban_long = urbanization %>%
+  pivot_longer(cols = starts_with("2"), names_to = "Year", values_to = "Urbanization_Perc")
+
+
+# Merge datasets
+combined_data = malaria_long %>%
+  left_join(forest_long, by = c("Country Name", "Year")) %>%
+  left_join(rainfall_long, by = c("Country Name", "Year")) %>%
+  left_join(gdp_long, by = c("Country Name", "Year")) %>%
+  left_join(urban_long, by = c("Country Name", "Year"))
+
+combine_remove = as.character(c("Country Code.x", "Country Code.x.x", "Country Code.y.y", "Country Code.y"))
+combined_data = combined_data[,!(colnames(combined_data) %in% combine_remove)]
+
+# View combined dataset
+View(combined_data)
+
+write.xlsx(combined_data, "combined_data.xlsx")
+```
+
+## Exploratory Data Analysis
+
+#### Scatter plots of Malaria Incidence and Forest Cover Percentage by Country
+
+```{r fig.height=11, fig.width=10, message=FALSE, warning=FALSE}
+
+# make the year numeric for plotting
+combined_data$Year = as.numeric(combined_data$Year)
+
+
+# forest scatterplot of Year vs Forest Cover Percentage by Country
+ggplot(data = combined_data, aes(x = Year, 
+                                 y = Forest_Cover, 
+                                 color = `Country Name`)) +
+  geom_point(size = 3) +
+  labs(title = "Year vs Forest Cover Percentage", 
+       x = "Year", 
+       y = "Forest Cover Percentage") +
+  theme(
+    legend.text = element_text(size = 10),
+    axis.title.x = element_text(size = 15),
+    axis.title.y = element_text(size = 15), 
+    plot.title = element_text(size = 20), 
+    axis.text = element_text(size = 9)
+  ) +
+  guides(color = guide_legend(ncol = 1, title = NULL))
+
+
+# malaria scatterplot of Year vs Malaria Incidence by Country
+ggplot(data = combined_data, aes(x = Year, 
+                                 y = Malaria_Incidence, 
+                                 color = `Country Name`)) +
+  geom_point(size = 3) +
+  labs(title = "Year vs Malaria Incidence", 
+       x = "Year", 
+       y = "Malaria Incidence") +
+  theme(
+    legend.text = element_text(size = 10),
+    axis.title.x = element_text(size = 15),
+    axis.title.y = element_text(size = 15), 
+    plot.title = element_text(size = 20), 
+    axis.text = element_text(size = 9)
+  ) +
+  guides(color = guide_legend(ncol = 1, title = NULL))
+```
+
+#### Summary Data of Malaria Incidence and Forest Cover Percentage by Country
+
+```{r}
+# summarize malaria incidence data by country - rows are sorted by mean incidence
+View(combined_data %>%
+  group_by(`Country Name`) %>%
+  summarize(
+    Min_Incidence = min(Malaria_Incidence),
+    Max_Incidence = max(Malaria_Incidence),
+    Mean_Incidence = mean(Malaria_Incidence),
+    Median_Incidence = median(Malaria_Incidence),
+    SD_Incidence = sd(Malaria_Incidence)) %>%
+    arrange(Mean_Incidence)
+  )
+
+
+# summarize forest cover % by country - rows are sorted by mean forest cover %
+View(combined_data %>%
+  group_by(`Country Name`) %>%
+  summarize(
+    Min_Perc_Cover = min(Forest_Cover),
+    Max_Perc_Cover = max(Forest_Cover),
+    Mean_Perc_Cover = mean(Forest_Cover),
+    Median_Perc_Cover = median(Forest_Cover),
+    SD_Perc_Cover = sd(Forest_Cover)) %>%
+    arrange(Mean_Perc_Cover))
+```
+
+#### Histograms of Malaria Incidence and Forest Cover Percentage by Country
+
+```{r fig.height=40, fig.width=10, message=FALSE, warning=FALSE}
+
+# plot the histograms of forest cover for each country
+ggplot(data = combined_data, aes(x = Forest_Cover)) +
+  geom_histogram(fill = "forest green", color = "black") +
+  labs(title = "Histogram of Forest Cover Percentage by Country", x = "Forest Cover Percentage", y = "Frequency") +
+  theme(
+    plot.title = element_text(size = 20),
+    axis.title.x = element_text(size = 15),
+    axis.title.y = element_text(size = 15),
+    axis.text = element_text(size = 9)
+  ) +
+  facet_wrap(~ `Country Name`, ncol = 3, scales = "free_x")
+
+
+
+# plot the histograms of malaria incidence for each country
+ggplot(data = combined_data, aes(x = Malaria_Incidence)) +
+  geom_histogram(fill = "forest green", color = "black") +
+  labs(title = "Histogram of Malaria Incidence by Country", x = "Malaria Incidence", y = "Frequency") +
+  theme(
+    plot.title = element_text(size = 20),
+    axis.title.x = element_text(size = 15),
+    axis.title.y = element_text(size = 15),
+    axis.text = element_text(size = 9)
+  ) +
+  facet_wrap(~ `Country Name`, ncol = 3, scales = "free_x")
+```
+
+#### Box plots of Malaria Incidence and Forest Cover Percentage by Country (one plot)
+
+```{r fig.height=10, fig.width=11, message=FALSE, warning=FALSE}
+
+# boxplot of malaria incidence by country - all in one plot
+ggplot(data = combined_data, aes(x = `Country Name`, y = Malaria_Incidence)) +
+  geom_boxplot(fill = "lightblue", color = "black", outlier.colour = "red", outlier.shape = 16) +
+  labs(title = "Boxplot of Malaria Incidence by Country", x = "Country", y = "Malaria Incidence") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 20),
+    axis.title.x = element_text(size = 15),
+    axis.title.y = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    axis.text.x = element_text(angle = 45, hjust = 1))
+
+# boxplot of forest cover percentage by country - all in one plot
+ggplot(data = combined_data, aes(x = `Country Name`, y = Forest_Cover)) +
+  geom_boxplot(fill = "lightblue", color = "black", outlier.colour = "red", outlier.shape = 16) +
+  labs(title = "Boxplot of Forest Cover Percentage by Country", x = "Country", y = "Forest Cover Percentage") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 20),
+    axis.title.x = element_text(size = 15),
+    axis.title.y = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+#### Box plots of Malaria Incidence and Forest Cover Percentage by Country (separate plots)
+
+```{r fig.height=40, fig.width=10, message=FALSE, warning=FALSE}
+
+#  boxplot of malaria incidence by country - separate plots
+ggplot(data = combined_data, aes(x = Forest_Cover)) +
+  geom_boxplot(fill = "lightblue", color = "black", outlier.color = "red") +
+  labs(title = "Boxplot of Forest Cover Percentage by Country", x = "", y = "") +
+  theme(
+    plot.title = element_text(size = 20),
+    axis.title.x = element_text(size = 15),
+    axis.title.y = element_text(size = 15),
+    axis.text.y = element_blank()
+  ) +
+  facet_wrap(~ `Country Name`, ncol = 3, scales = "free_x")
+
+
+#  boxplot of malaria incidence by country - separate plots
+ggplot(data = combined_data, aes(x = Malaria_Incidence)) +
+  geom_boxplot(fill = "lightblue", color = "black", outlier.color = "red") +
+  labs(title = "Boxplot of Malaria Incidence by Country", x = "", y = "") +
+  theme(
+    plot.title = element_text(size = 20),
+    axis.title.x = element_text(size = 15),
+    axis.title.y = element_text(size = 15),
+    axis.text.y = element_blank()
+  ) +
+  facet_wrap(~ `Country Name`, ncol = 3, scales = "free_x")
+```
+
+#### Heat map of Malaria Incidence and Forest Cover Percentage by Country
+
+```{r fig.height=10, fig.width=10}
+
+# format forest cover data for heatmap compatability
+forest_long = melt(combined_data, id.vars = c("Year", "Country Name"), 
+                           measure.vars = "Forest_Cover")
+
+ggplot(forest_long, aes(x = Year, y = `Country Name`, fill = value)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(low = "white", high = "forest green") +
+  labs(title = "Heatmap of Forest Cover Percentage by Year and Country", 
+       x = "Year", 
+       y = "Country", 
+       fill = "Forest Cover Percentage") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 20),
+    axis.title.x = element_text(size = 15),
+    axis.title.y = element_text(size = 15),
+    axis.text = element_text(size = 12))
+
+
+# format malaria data for heatmap compatability
+malaria_long = melt(combined_data, id.vars = c("Year", "Country Name"), 
+                           measure.vars = "Malaria_Incidence")
+
+ggplot(malaria_long, aes(x = Year, y = `Country Name`, fill = value)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(low = "white", high = "red") +
+  labs(title = "Heatmap of Malaria Incidence by Year and Country", 
+       x = "Year", 
+       y = "Country", 
+       fill = "Malaria Incidence") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 20),
+    axis.title.x = element_text(size = 15),
+    axis.title.y = element_text(size = 15),
+    axis.text = element_text(size = 12))
+```
+
+# New Plots - 9/17/2024
+
+### Scatterplots by Country - Malaria Incidence (normalized by population) and Forest Cover Percentage per Year
+
+```{r fig.height=70, fig.width=12, message=FALSE, warning=FALSE}
+# Scatter plot for all countries and years
+
+# Function to create scatter plot for a single country
+create_scatter_plot = function(country_data, country_name) {
+  ggplot(country_data, aes(x = Year)) +
+    geom_line(aes(y = `Forest_Cover`, color = "Forest Cover %"), linewidth = 1) +
+    geom_line(aes(y = `Malaria_Incidence`, color = "Malaria Incidence"), linewidth = 1) +
+    scale_y_continuous(
+      name = "Forest Cover %",
+      sec.axis = sec_axis(~ ., name = "Malaria Incidence")
+    ) +
+    labs(title = paste("Forest Cover % and Malaria Incidence in", country_name)) +
+    theme(legend.position = "bottom") +
+    scale_color_manual(
+      name = "Legend",
+      values = c("Forest Cover %" = "Forest Green", "Malaria Incidence" = "red")
+    )
+}
+
+# Create a list of plots for each country
+plots_scatter = combined_data %>%
+  split(.$`Country Name`) %>%
+  map2(names(.), ~ create_scatter_plot(.x, .y))
+
+# Combine all plots into one display
+combined_plot_scatter = wrap_plots(plots_scatter, ncol = 2)
+
+# Display the combined plot
+print(combined_plot_scatter)
+```
+
+### Histograms by Country - Malaria Incidence (normalized by population), Forest Cover Percentage, Rainfall Depth in mm\^3, GDP per Capita, and Urbanization Percentage per Year
+
+```{r fig.height=200, fig.width=15, message=FALSE, warning=FALSE}
+# Function to create side-by-side histograms for a single country
+create_histograms <- function(country_data, country_name) {
+  malaria_plot <- ggplot(country_data, aes(x = Year, y = `Malaria_Incidence`)) +
+    geom_col(fill = "red", alpha = 0.7) +
+    labs(title = paste("Malaria Incidence in", country_name), x = "Year", y = "Malaria Incidence") +
+    theme_minimal()
+  
+  forest_plot <- ggplot(country_data, aes(x = Year, y = `Forest_Cover`)) +
+    geom_col(fill = "Forest Green", alpha = 0.7) +
+    labs(title = paste("Forest Cover % in", country_name), x = "Year", y = "Forest Cover %") +
+    theme_minimal()
+  
+  rainfall_plot <- ggplot(country_data, aes(x = Year, y = `Rainfall_Depth`)) +
+    geom_col(fill = "blue", alpha = 0.7) +
+    labs(title = paste("Rainfall Depth in", country_name), x = "Year", y = "Rainfall Depth") +
+    theme_minimal()
+  
+  gdp_plot <- ggplot(country_data, aes(x = Year, y = `GDP_per_Capita`)) +
+    geom_col(fill = "yellow", alpha = 0.7) +
+    labs(title = paste("GDP per Capita in", country_name), x = "Year", y = "GDP per Capita") +
+    theme_minimal()
+  
+  urbanization_plot <- ggplot(country_data, aes(x = Year, y = `Urbanization_Perc`)) +
+    geom_col(fill = "orange", alpha = 0.7) +
+    labs(title = paste("Urbanization Percentage in", country_name), x = "Year", y = "Urbanization Percentage") +
+    theme_minimal()
+  
+  malaria_plot + forest_plot + rainfall_plot + gdp_plot + urbanization_plot
+}
+
+# Create a list of plots for each country
+plots <- combined_data %>%
+  split(.$`Country Name`) %>%
+  map2(names(.), ~ create_histograms(.x, .y))
+
+# Combine all plots into one display
+combined_plot <- wrap_plots(plots, ncol = 1)
+
+# Display the combined plot
+print(combined_plot)
+```
+
+```{r message=FALSE, warning=FALSE}
+# Assuming your data frame is named combined_data
+ggpairs(combined_data, columns = c("Malaria_Incidence", "Forest_Cover", "Rainfall_Depth", "GDP_per_Capita", "Urbanization_Perc"))
+
+# Scatterplot of Malaria Cases vs other variables, faceted by variable
+combined_data_long <- combined_data %>%
+  pivot_longer(cols = c("Forest_Cover", "Rainfall_Depth", "GDP_per_Capita", "Urbanization_Perc"), names_to = "Variable", values_to = "Value")
+
+ggplot(combined_data_long, aes(x = `Malaria_Incidence`, y = Value)) +
+  geom_point() +
+  facet_wrap(~ Variable, scales = "free_y") +
+  labs(title = "Scatterplots of Malaria Cases vs Other Variables", x = "Malaria_Incidence", y = "Value") +
+  theme_minimal()
+
+
+# 3D scatterplot of Malaria Cases, Forest Cover, and Rainfall Depth
+plot_ly(combined_data, x = ~`Malaria_Incidence`, y = ~`Forest_Cover`, z = ~`Rainfall_Depth`, type = 'scatter3d', mode = 'markers')
+
+```
