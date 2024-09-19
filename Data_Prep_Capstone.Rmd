@@ -20,6 +20,8 @@ library(patchwork)
 library(purrr)
 library(GGally)
 library(plotly)
+library(scales)
+library(ggcorrplot)
 
 
 # turn off scientific notation format output
@@ -38,6 +40,13 @@ clean_char = function(text){
 # Import Subsaharan African countries list
 countries = read_excel("~/STAT 482/subsaharan_countries.xlsx", sheet = "Countries", col_names =  TRUE)
 
+# Assign Regions
+Eastern_Africa = c("Eritrea", "Djibouti", "Somalia", "Kenya", "Tanzania", "Malawi", "Zimbabwe", "Zambia", "Sudan", "Madagascar", "Rwanda", "Burundi", "Ethiopia")
+Central_Africa = c("Chad", "Central African Republic", "Cameroon", "Gabon", "Equatorial Guinea", "Congo", "Dem. Rep. Congo", "Angolia", "Sao Tome and Principe")
+South_Africa = c("Nambia", "Botswana", "Eswatini", "South Africa")
+Western_Africa = c("Mauritania", "Mali", "Niger", "Nigeria", "Benin", "Ivory Coast", "Ghana", "Togo", "Burkina Faso", "Guinea", "Sierra Leone", "Guinnea-Bissau", "Senegal", "Gambia")
+
+View(countries)
 population = read_excel("~/STAT 482/Population.xls", sheet = "Data", col_names =  TRUE)
 
 # filter to get only sub-Saharan African countries
@@ -130,7 +139,7 @@ rainfall = rainfall[,!(colnames(rainfall) %in% to_remove)]
 ### GDP per capita data
 
 ```{r}
-gdp = read_excel("~/STAT 482/GDP_per_capita.xls", sheet = "Data", col_names = TRUE)
+gdp = read_excel("~/STAT 482/GDP_per_capita_total.xls", sheet = "Data", col_names = TRUE)
 
 gdp = gdp[gdp$`Country Name` %in% countries$country_name,]
 gdp = gdp[,!(colnames(gdp) %in% to_remove)]
@@ -193,7 +202,7 @@ write.xlsx(combined_data, "combined_data.xlsx")
 
 #### Scatter plots of Malaria Incidence and Forest Cover Percentage by Country
 
-```{r fig.height=11, fig.width=10, message=FALSE, warning=FALSE}
+```{r fig.height=11, fig.width=10, message=FALSE, warning=FALSE, include=FALSE}
 
 # make the year numeric for plotting
 combined_data$Year = as.numeric(combined_data$Year)
@@ -237,7 +246,7 @@ ggplot(data = combined_data, aes(x = Year,
 
 #### Summary Data of Malaria Incidence and Forest Cover Percentage by Country
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 # summarize malaria incidence data by country - rows are sorted by mean incidence
 View(combined_data %>%
   group_by(`Country Name`) %>%
@@ -265,7 +274,7 @@ View(combined_data %>%
 
 #### Histograms of Malaria Incidence and Forest Cover Percentage by Country
 
-```{r fig.height=40, fig.width=10, message=FALSE, warning=FALSE}
+```{r eval=FALSE, fig.height=40, fig.width=10, message=FALSE, warning=FALSE, include=FALSE}
 
 # plot the histograms of forest cover for each country
 ggplot(data = combined_data, aes(x = Forest_Cover)) +
@@ -325,7 +334,7 @@ ggplot(data = combined_data, aes(x = `Country Name`, y = Forest_Cover)) +
 
 #### Box plots of Malaria Incidence and Forest Cover Percentage by Country (separate plots)
 
-```{r fig.height=40, fig.width=10, message=FALSE, warning=FALSE}
+```{r eval=FALSE, fig.height=40, fig.width=10, message=FALSE, warning=FALSE, include=FALSE}
 
 #  boxplot of malaria incidence by country - separate plots
 ggplot(data = combined_data, aes(x = Forest_Cover)) +
@@ -399,78 +408,76 @@ ggplot(malaria_long, aes(x = Year, y = `Country Name`, fill = value)) +
 
 ### Scatterplots by Country - Malaria Incidence (normalized by population) and Forest Cover Percentage per Year
 
-```{r fig.height=70, fig.width=12, message=FALSE, warning=FALSE}
+```{r fig.height=70, fig.width=14, message=FALSE, warning=FALSE}
 # Scatter plot for all countries and years
 
-# Function to create scatter plot for a single country
-create_scatter_plot = function(country_data, country_name) {
-  ggplot(country_data, aes(x = Year)) +
+# Split the data by country
+split_data = combined_data %>% split(.$`Country Name`)
+
+# Create a list of plots for each country
+plots_scatter = map2(split_data, names(split_data), ~ {
+  ggplot(.x, aes(x = Year)) +
     geom_line(aes(y = `Forest_Cover`, color = "Forest Cover %"), linewidth = 1) +
-    geom_line(aes(y = `Malaria_Incidence`, color = "Malaria Incidence"), linewidth = 1) +
+    geom_line(aes(y = `Malaria_Incidence` * 100, color = "Malaria Incidence"), linewidth = 1) +  # Scale Malaria Incidence
     scale_y_continuous(
       name = "Forest Cover %",
-      sec.axis = sec_axis(~ ., name = "Malaria Incidence")
+      sec.axis = sec_axis(~ . / 100, name = "% of Population with Malaria")  # Adjust the secondary axis
     ) +
-    labs(title = paste("Forest Cover % and Malaria Incidence in", country_name)) +
+    labs(title = paste("Forest Cover % and % of Population with Malaria in", .y)) +
     theme(legend.position = "bottom") +
     scale_color_manual(
       name = "Legend",
       values = c("Forest Cover %" = "Forest Green", "Malaria Incidence" = "red")
     )
-}
+})
 
-# Create a list of plots for each country
-plots_scatter = combined_data %>%
-  split(.$`Country Name`) %>%
-  map2(names(.), ~ create_scatter_plot(.x, .y))
-
-# Combine all plots into one display
+# Combine all plots into one display with free scales
 combined_plot_scatter = wrap_plots(plots_scatter, ncol = 2)
 
 # Display the combined plot
 print(combined_plot_scatter)
 ```
 
-### Histograms by Country - Malaria Incidence (normalized by population), Forest Cover Percentage, Rainfall Depth in mm\^3, GDP per Capita, and Urbanization Percentage per Year
+### Scatterplots by Country - Malaria Incidence (normalized by population), Forest Cover Percentage, Rainfall Depth in mm\^3, GDP per Capita, and Urbanization Percentage per Year
 
 ```{r fig.height=200, fig.width=15, message=FALSE, warning=FALSE}
 # Function to create side-by-side histograms for a single country
-create_histograms <- function(country_data, country_name) {
-  malaria_plot <- ggplot(country_data, aes(x = Year, y = `Malaria_Incidence`)) +
+create_histograms = function(country_data, country_name) {
+  malaria_plot = ggplot(country_data, aes(x = Year, y = `Malaria_Incidence`)) +
     geom_col(fill = "red", alpha = 0.7) +
-    labs(title = paste("Malaria Incidence in", country_name), x = "Year", y = "Malaria Incidence") +
+    labs(title = paste("% of Population with Malaria in", country_name), x = "Year", y = "% of Population with Malaria") +
     theme_minimal()
   
-  forest_plot <- ggplot(country_data, aes(x = Year, y = `Forest_Cover`)) +
+  forest_plot = ggplot(country_data, aes(x = Year, y = `Forest_Cover`)) +
     geom_col(fill = "Forest Green", alpha = 0.7) +
     labs(title = paste("Forest Cover % in", country_name), x = "Year", y = "Forest Cover %") +
     theme_minimal()
   
-  rainfall_plot <- ggplot(country_data, aes(x = Year, y = `Rainfall_Depth`)) +
+  rainfall_plot = ggplot(country_data, aes(x = Year, y = `Rainfall_Depth`)) +
     geom_col(fill = "blue", alpha = 0.7) +
-    labs(title = paste("Rainfall Depth in", country_name), x = "Year", y = "Rainfall Depth") +
+    labs(title = paste("Rainfall Depth in", country_name), x = "Year", y = "Rainfall Depth mm^3") +
     theme_minimal()
   
-  gdp_plot <- ggplot(country_data, aes(x = Year, y = `GDP_per_Capita`)) +
+  gdp_plot = ggplot(country_data, aes(x = Year, y = `GDP_per_Capita`)) +
     geom_col(fill = "yellow", alpha = 0.7) +
-    labs(title = paste("GDP per Capita in", country_name), x = "Year", y = "GDP per Capita") +
+    labs(title = paste("GDP per Capita in", country_name), x = "Year", y = "GDP per Capita, $US") +
     theme_minimal()
   
-  urbanization_plot <- ggplot(country_data, aes(x = Year, y = `Urbanization_Perc`)) +
+  urbanization_plot = ggplot(country_data, aes(x = Year, y = `Urbanization_Perc`)) +
     geom_col(fill = "orange", alpha = 0.7) +
-    labs(title = paste("Urbanization Percentage in", country_name), x = "Year", y = "Urbanization Percentage") +
+    labs(title = paste("Urbanization Percentage in", country_name), x = "Year", y = "Urbanization %") +
     theme_minimal()
   
   malaria_plot + forest_plot + rainfall_plot + gdp_plot + urbanization_plot
 }
 
 # Create a list of plots for each country
-plots <- combined_data %>%
+plots = combined_data %>%
   split(.$`Country Name`) %>%
   map2(names(.), ~ create_histograms(.x, .y))
 
 # Combine all plots into one display
-combined_plot <- wrap_plots(plots, ncol = 1)
+combined_plot = wrap_plots(plots, ncol = 1)
 
 # Display the combined plot
 print(combined_plot)
@@ -481,7 +488,7 @@ print(combined_plot)
 ggpairs(combined_data, columns = c("Malaria_Incidence", "Forest_Cover", "Rainfall_Depth", "GDP_per_Capita", "Urbanization_Perc"))
 
 # Scatterplot of Malaria Cases vs other variables, faceted by variable
-combined_data_long <- combined_data %>%
+combined_data_long = combined_data %>%
   pivot_longer(cols = c("Forest_Cover", "Rainfall_Depth", "GDP_per_Capita", "Urbanization_Perc"), names_to = "Variable", values_to = "Value")
 
 ggplot(combined_data_long, aes(x = `Malaria_Incidence`, y = Value)) +
@@ -492,6 +499,24 @@ ggplot(combined_data_long, aes(x = `Malaria_Incidence`, y = Value)) +
 
 
 # 3D scatterplot of Malaria Cases, Forest Cover, and Rainfall Depth
-plot_ly(combined_data, x = ~`Malaria_Incidence`, y = ~`Forest_Cover`, z = ~`Rainfall_Depth`, type = 'scatter3d', mode = 'markers')
+# plot_ly(combined_data, x = ~`Malaria_Incidence`, y = ~`Forest_Cover`, z = ~`Rainfall_Depth`, type = 'scatter3d', mode = 'markers')
+```
 
+```{r fig.height=5, fig.width=5}
+
+# Get only data columns and rename them for accurate data labels
+corr_data = combined_data[,c("Malaria_Incidence", "Forest_Cover", "Rainfall_Depth", "Urbanization_Perc", "GDP_per_Capita")]
+colnames(corr_data) = c("% Population with Malaria", "Forest Cover %", "Rainfall Depth mm^3", "Urbanization %", "GDP per Capita $US")
+
+# Compute correlation matrix
+cor_matrix = cor(corr_data)
+
+# Create the correlation matrix plot
+ggcorrplot(cor_matrix, 
+           method = "circle", 
+           type = "full", 
+           lab = TRUE, 
+           tl.cex = 8,
+           colors = c("red", "white", "forest green"),
+           title = "Correlation Matrix of Various Factors", ggtheme = theme_gray())
 ```
