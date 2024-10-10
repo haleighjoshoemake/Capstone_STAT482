@@ -34,7 +34,7 @@ clean_char = function(text){
 }
 ```
 
-### Population per Country
+#### Population by Country
 
 ```{r}
 # Import Subsaharan African countries list
@@ -46,7 +46,6 @@ Central_Africa = c("Chad", "Central African Republic", "Cameroon", "Gabon", "Equ
 South_Africa = c("Nambia", "Botswana", "Eswatini", "South Africa")
 Western_Africa = c("Mauritania", "Mali", "Niger", "Nigeria", "Benin", "Ivory Coast", "Ghana", "Togo", "Burkina Faso", "Guinea", "Sierra Leone", "Guinnea-Bissau", "Senegal", "Gambia")
 
-View(countries)
 population = read_excel("~/STAT 482/Population.xls", sheet = "Data", col_names =  TRUE)
 
 # filter to get only sub-Saharan African countries
@@ -57,7 +56,7 @@ to_remove = as.character(c(1960:1999,2021:2023, "Indicator Code", "Indicator Nam
 population = population[,!(colnames(population) %in% to_remove)]
 ```
 
-### Forest Cover Data
+#### Forest Cover Data
 
 ```{r message=FALSE, warning=FALSE}
 # import forest cover data by country and the sub-Saharan countries list
@@ -77,7 +76,7 @@ forest = forest[forest$`Country Name` %in% countries$country_name,]
 forest = forest[,!(colnames(forest) %in% to_remove)]
 ```
 
-### Malaria Case Data
+#### Malaria Case Data
 
 ```{r message=FALSE}
 # import malaria case number data by country
@@ -103,7 +102,7 @@ country_name_code = forest[,c(1:2)]
 malaria = left_join(malaria, country_name_code, by = "Country Name")
 ```
 
-### Normalize Malaria Case Data by Population
+##### Normalize Malaria Case Data by Population per Country
 
 ```{r}
 # Reshape to long format
@@ -127,7 +126,7 @@ malaria = normalized_data %>%
   pivot_wider(names_from = year, values_from = normalized_cases)
 ```
 
-### Rainfall Data
+#### Rainfall Data
 
 ```{r}
 rainfall = read_excel("~/STAT 482/rainfall_data.xls", sheet = "Data", col_names =  TRUE) 
@@ -136,7 +135,7 @@ rainfall = rainfall[rainfall$`Country Name` %in% countries$country_name,]
 rainfall = rainfall[,!(colnames(rainfall) %in% to_remove)]
 ```
 
-### GDP per capita data
+#### GDP per Capita Data
 
 ```{r}
 gdp = read_excel("~/STAT 482/GDP_per_capita_total.xls", sheet = "Data", col_names = TRUE)
@@ -145,7 +144,7 @@ gdp = gdp[gdp$`Country Name` %in% countries$country_name,]
 gdp = gdp[,!(colnames(gdp) %in% to_remove)]
 ```
 
-### Urbanization Rate Data
+#### Urbanization Rate Data
 
 ```{r}
 urbanization = read_excel("~/STAT 482/urbanization_rate_data.xls", sheet = "Data", col_names = TRUE)
@@ -154,7 +153,7 @@ urbanization = urbanization[urbanization$`Country Name` %in% countries$country_n
 urbanization = urbanization[,!(colnames(urbanization) %in% to_remove)]
 ```
 
-### Combine Datasets
+### Combine Data into one Dataframe
 
 ```{r}
 # reorder the 'country' variable in order of most north to most south in latitude
@@ -192,15 +191,13 @@ combined_data = malaria_long %>%
 combine_remove = as.character(c("Country Code.x", "Country Code.x.x", "Country Code.y.y", "Country Code.y"))
 combined_data = combined_data[,!(colnames(combined_data) %in% combine_remove)]
 
-# View combined dataset
-View(combined_data)
-
 write.xlsx(combined_data, "combined_data.xlsx")
 ```
 
-### Deal with NA values
+#### Handle NAs
 
 ```{r}
+# TODO
 combined_data$GDP_per_Capita[(is.na(combined_data$GDP_per_Capita))]
 combined_data[(is.na(combined_data$GDP_per_Capita)),]
 combined_data$GDP_per_Capita
@@ -216,7 +213,9 @@ combined_data[(is.na(combined_data$GDP_per_Capita)) & combined_data$`Country Nam
 
 ```
 
-## Exploratory Data Analysis
+---
+
+## Report 1: Exploratory Data Analysis
 
 #### Scatter plots of Malaria Incidence and Forest Cover Percentage by Country
 
@@ -266,7 +265,7 @@ ggplot(data = combined_data, aes(x = Year,
 
 ```{r eval=FALSE, include=FALSE}
 # summarize malaria incidence data by country - rows are sorted by mean incidence
-View(combined_data %>%
+(combined_data %>%
   group_by(`Country Name`) %>%
   summarize(
     Min_Incidence = min(Malaria_Incidence),
@@ -279,7 +278,7 @@ View(combined_data %>%
 
 
 # summarize forest cover % by country - rows are sorted by mean forest cover %
-View(combined_data %>%
+(combined_data %>%
   group_by(`Country Name`) %>%
   summarize(
     Min_Perc_Cover = min(Forest_Cover),
@@ -422,9 +421,7 @@ ggplot(malaria_long, aes(x = Year, y = `Country Name`, fill = value)) +
     axis.text = element_text(size = 12))
 ```
 
-# New Plots - 9/17/2024
-
-### Scatterplots by Country - Malaria Incidence (normalized by population) and Forest Cover Percentage per Year
+#### Scatterplots by Country - Malaria and Forest Cover per Year
 
 ```{r eval=FALSE, fig.height=70, fig.width=14, message=FALSE, warning=FALSE, include=FALSE}
 # Scatter plot for all countries and years
@@ -456,7 +453,7 @@ combined_plot_scatter = wrap_plots(plots_scatter, ncol = 2)
 print(combined_plot_scatter)
 ```
 
-### Scatterplots by Country - Malaria Incidence (normalized by population), Forest Cover Percentage, Rainfall Depth in mm\^3, GDP per Capita, and Urbanization Percentage per Year
+#### Scatterplots by Country - All Covariates and Response
 
 ```{r eval=FALSE, fig.height=200, fig.width=15, message=FALSE, warning=FALSE, include=FALSE}
 # Function to create side-by-side histograms for a single country
@@ -501,24 +498,7 @@ combined_plot = wrap_plots(plots, ncol = 1)
 print(combined_plot)
 ```
 
-```{r message=FALSE, warning=FALSE}
-# Assuming your data frame is named combined_data
-ggpairs(combined_data, columns = c("Malaria_Incidence", "Forest_Cover", "Rainfall_Depth", "GDP_per_Capita", "Urbanization_Perc"))
-
-# Scatterplot of Malaria Cases vs other variables, faceted by variable
-combined_data_long = combined_data %>%
-  pivot_longer(cols = c("Forest_Cover", "Rainfall_Depth", "GDP_per_Capita", "Urbanization_Perc"), names_to = "Variable", values_to = "Value")
-
-ggplot(combined_data_long, aes(x = `Malaria_Incidence`, y = Value)) +
-  geom_point() +
-  facet_wrap(~ Variable, scales = "free_y") +
-  labs(title = "Scatterplots of Malaria Cases vs Other Variables", x = "Malaria_Incidence", y = "Value") +
-  theme_minimal()
-
-
-# 3D scatterplot of Malaria Cases, Forest Cover, and Rainfall Depth
-# plot_ly(combined_data, x = ~`Malaria_Incidence`, y = ~`Forest_Cover`, z = ~`Rainfall_Depth`, type = 'scatter3d', mode = 'markers')
-```
+#### Correlation Matrix
 
 ```{r fig.height=5, fig.width=5}
 
@@ -539,64 +519,231 @@ ggcorrplot(cor_matrix,
            title = "Correlation Matrix of Various Factors", ggtheme = theme_gray())
 ```
 
+------------------------------------------------------------------------
+
 ## Report 2 - Linear Regression
 
-```{r}
-fit = lm(Malaria_Incidence ~ Forest_Cover + Urbanization_Perc + Rainfall_Depth + GDP_per_Capita, data = combined_data)
-qq_norm_res=qqnorm(residuals(fit),main = "Normal Q-Q Plot")
-qqnorm_model=lm(qq_norm_res$y~qq_norm_res$x)
-abline(a=qqnorm_model$coef[1], b=qqnorm_model$coef[2])
-summary(fit)
-
-# log transformation
-fit_log = lm(log(Malaria_Incidence) ~ Forest_Cover + Urbanization_Perc + Rainfall_Depth + GDP_per_Capita, data = combined_data)
-qq_norm_res=qqnorm(residuals(fit_log), main = "Normal Q-Q Plot - log(malaria)")
-qqnorm_model=lm(qq_norm_res$y~qq_norm_res$x)
-abline(a=qqnorm_model$coef[1], b=qqnorm_model$coef[2])
-
-# sqrt transformation
-fit_sqrt = lm(sqrt(Malaria_Incidence) ~ Forest_Cover + Urbanization_Perc + Rainfall_Depth + GDP_per_Capita, data = combined_data)
-qq_norm_res=qqnorm(residuals(fit_sqrt), main = "Normal Q-Q Plot - sqrt(malaria)")
-qqnorm_model=lm(qq_norm_res$y~qq_norm_res$x)
-abline(a=qqnorm_model$coef[1], b=qqnorm_model$coef[2])
-
-
-# cubed root transformation of rainfall
-rainfall_cube_root = (combined_data$Rainfall_Depth)**(1/3)
-fit_cube = lm(Malaria_Incidence ~ Forest_Cover + Urbanization_Perc + rainfall_cube_root + GDP_per_Capita, data = combined_data)
-qq_norm_res=qqnorm(residuals(fit_cube), main = "Normal Q-Q Plot - rainfall^(1/3)")
-summary(fit_cube)
-qqnorm_model=lm(qq_norm_res$y~qq_norm_res$x)
-abline(a=qqnorm_model$coef[1], b=qqnorm_model$coef[2])
-```
+#### Centralize Covariates
 
 ```{r}
-# AIC and BIC
-model_list = list(fit, fit_cube, fit_log, fit_sqrt)
-# Function to print AIC and BIC for multiple models
-print_aic_bic <- function(model_list) {
-  # Create an empty data frame to store results
-  results <- data.frame(Model = character(), AIC = numeric(), BIC = numeric(), stringsAsFactors = FALSE)
-  
-  # Loop through the list of models and calculate AIC and BIC
-  for (i in seq_along(model_list)) {
-    model_name <- deparse(substitute(model_list[[i]]))
-    aic_value <- AIC(model_list[[i]])
-    bic_value <- BIC(model_list[[i]])
-    
-    # Append the results to the data frame
-    results <- rbind(results, data.frame(Model = model_name, AIC = aic_value, BIC = bic_value))
-  }
-  
-  # Print the results in a nice table format
-  print(results)
+# Centralize the Covariate to have beta0 be the average malaria rate for an average country
+covariates = c("Forest_Cover", "Urbanization_Perc", "Rainfall_Depth", "GDP_per_Capita")
+
+# Centralize the covariates
+for (covariate in covariates) {
+  combined_data[[paste0(covariate, "_centered")]] = combined_data[[covariate]] - mean(combined_data[[covariate]], na.rm = TRUE)
 }
-print_aic_bic(model_list)
-
 ```
 
-```{r}
+#### Fit Linear Regression Models for All Years
 
+Includes model summaries and Normal QQ-Plots
+
+```{r}
+# Fit a linear regression model including all year and country data
+fit_overall = lm(Malaria_Incidence ~ Forest_Cover + Urbanization_Perc + Rainfall_Depth + GDP_per_Capita, data = combined_data)
+qq_norm_res=qqnorm(residuals(fit_overall),main = "Normal Q-Q Plot - Overall")
+qqnorm_model=lm(qq_norm_res$y~qq_norm_res$x)
+abline(a=qqnorm_model$coef[1], b=qqnorm_model$coef[2])
+summary(fit_overall)
+
+# Add Year (numerical) as a covariate in the overall model
+fit_overall_w_year = lm(Malaria_Incidence ~ Year + Forest_Cover + Urbanization_Perc + Rainfall_Depth + GDP_per_Capita, data = combined_data)
+qq_norm_res=qqnorm(residuals(fit_overall_w_year),main = "Normal Q-Q Plot - Overall with Year Covariate")
+qqnorm_model=lm(qq_norm_res$y~qq_norm_res$x)
+abline(a=qqnorm_model$coef[1], b=qqnorm_model$coef[2])
+summary(fit_overall_w_year)
+
+
+# Print summary of coefficients and R^2
+cat("\n", "Overall Model", "\n")
+print(fit_overall$coefficients)
+cat("\n", "R^2:", summary(fit_overall)$r.squared, "\n", "R^2 adjusted:", summary(fit_overall)$adj.r.squared, "\n")
+cat("\n", "Overall Model with Year Covariate", "\n")
+print(fit_overall_w_year$coefficients)
+cat("\n", "R^2:", summary(fit_overall_w_year)$r.squared, "\n", "R^2 adjusted:", summary(fit_overall_w_year)$adj.r.squared, "\n")
+```
+
+#### Fit Linear Regression Model per Year
+
+```{r}
+# Fit the model per year
+
+# List to store models
+models_list = list()
+years = unique(combined_data$Year)
+
+# Fit the model for each year and store in the list
+for (year in years) {
+  data_year = subset(combined_data, Year == year)
+  model = lm(Malaria_Incidence ~ Forest_Cover + Urbanization_Perc + Rainfall_Depth + GDP_per_Capita, data = data_year)
+  models_list[[as.character(year)]] = summary(model)
+}
+
+# Extract p-values, standard errors, and estimates
+p_values = data.frame()
+standard_errors = data.frame()
+estimates = data.frame()
+
+for (year in names(models_list)) {
+  model_summary = models_list[[year]]
+  coefs = coef(model_summary)
+  
+  p_values[year, names(coefs[, "Pr(>|t|)"])] = coefs[, "Pr(>|t|)"]
+  standard_errors[year, names(coefs[, "Std. Error"])] = coefs[, "Std. Error"]
+  estimates[year, names(coefs[, "Estimate"])] = coefs[, "Estimate"]
+}
+p_values$Year = c(2000:2020)
+standard_errors$Year = c(2000:2020)
+estimates$Year = c(2000:2020)
+
+
+# Convert to long format for plotting
+p_values_long = melt(p_values, id.vars = "Year", variable.name = "Variable", value.name = "P_Value")
+standard_errors_long = melt(standard_errors, id.vars = "Year", variable.name = "Variable", value.name = "Standard_Error")
+estimates_long = melt(estimates, id.vars = "Year", variable.name = "Variable", value.name = "Estimate")
+```
+
+##### Plot Statistics from Models per Year
+
+```{r}
+# Plot the statistics from models per year
+
+# Define a color palette for the variables including the intercept
+variable_colors = c(
+  "(Intercept)" = "#9467bd",
+  "Forest_Cover" = "#1f77b4",
+  "Urbanization_Perc" = "#ff7f0e",
+  "Rainfall_Depth" = "#2ca02c",
+  "GDP_per_Capita" = "#d62728"
+)
+
+# Plotting p-values
+ggplot(p_values_long, aes(x = Year, y = P_Value, color = Variable)) +
+  geom_line() +
+  geom_point() +
+  scale_color_manual(values = variable_colors) +
+  labs(title = "P-Values Over Years", y = "P-Value")
+
+# Plotting standard errors for each variable
+for (variable in unique(standard_errors_long$Variable)) {
+  plot = ggplot(subset(standard_errors_long, Variable == variable), aes(x = Year, y = Standard_Error, color = Variable)) +
+    geom_line() +
+    geom_point() +
+    scale_color_manual(values = variable_colors) +
+    labs(title = paste("Standard Errors Over Years for", variable), y = "Standard Error") +
+    theme_minimal()
+  
+  print(plot)  # Display the plot
+}
+
+# Plotting estimates for each variable
+for (variable in unique(estimates_long$Variable)) {
+  plot = ggplot(subset(estimates_long, Variable == variable), aes(x = Year, y = Estimate, color = Variable)) +
+    geom_line() +
+    geom_point() +
+    scale_color_manual(values = variable_colors) +
+    labs(title = paste("Estimates Over Years for", variable), y = "Estimate") +
+    theme_minimal()
+  
+  print(plot)  # Display the plot
+}
+```
+
+#### Goodness-of-Fit for Models per Year
+
+```{r}
+# Perform Goodness-of-Fit and plot results
+
+# List to store models
+models_list = list()
+
+# Unique years in the data
+years = unique(combined_data$Year)
+
+# Data frame to store goodness-of-fit metrics
+goodness_of_fit = data.frame(Year = integer(), F_statistic = numeric(), p_value = numeric(), AIC = numeric(), BIC = numeric())
+
+# Fit the model for each year and store the goodness-of-fit metrics
+for (year in years) {
+  data_year = subset(combined_data, Year == year)
+  
+  # Fit the model
+  model = lm(Malaria_Incidence ~ Forest_Cover + Urbanization_Perc + Rainfall_Depth + GDP_per_Capita, data = data_year)
+  
+  # Get the summary of the model
+  model_summary = summary(model)
+  
+  # Perform the F-test
+  f_statistic = model_summary$fstatistic["value"]
+  p_value = pf(f_statistic, numdf, dendf, lower.tail = FALSE)["value"]
+  
+  # Calculate AIC and BIC
+  aic = AIC(model)
+  bic = BIC(model)
+  
+  # Extract R-squared and Adjusted R-squared
+  r_squared = model_summary$r.squared
+  adjusted_r_squared = model_summary$adj.r.squared
+  
+
+  
+  # Store the metrics in the data frame
+  goodness_of_fit = rbind(goodness_of_fit, data.frame(Year = year, F_statistic = f_statistic, p_value = p_value, AIC = aic, BIC = bic, R_squared = r_squared, Adjusted_R_squared = adjusted_r_squared))
+}
+
+
+
+# Print the goodness-of-fit metrics
+print(goodness_of_fit)
+
+# Plot F-statistic over the years
+ggplot(goodness_of_fit, aes(x = Year, y = F_statistic)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "F-Statistic Over Years", x = "Year", y = "F-Statistic") +
+  theme_minimal()
+
+# Plot p-value over the years
+ggplot(goodness_of_fit, aes(x = Year, y = p_value)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "P-Value Over Years", x = "Year", y = "P-Value") +
+  theme_minimal()
+
+# Plot AIC over the years
+ggplot(goodness_of_fit, aes(x = Year, y = AIC)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "AIC Over Years", x = "Year", y = "AIC") +
+  theme_minimal()
+
+# Plot BIC over the years
+ggplot(goodness_of_fit, aes(x = Year, y = BIC)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "BIC Over Years", x = "Year", y = "BIC") +
+  theme_minimal()
+
+# Plot R-squared over the years
+ggplot(goodness_of_fit, aes(x = Year, y = R_squared)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "R-Squared Over Years", x = "Year", y = "R-Squared") +
+  theme_minimal()
+
+# Plot Adjusted R-squared over the years
+ggplot(goodness_of_fit, aes(x = Year, y = Adjusted_R_squared)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Adjusted R-Squared Over Years", x = "Year", y = "Adjusted R-Squared") +
+  theme_minimal()
+```
+
+#### Identify Influential Points
+
+```{r}
+# TODO
 # identify influential points for Forest_Cover
 plot(cooks.distance(fit_cube),  type="h", main = "Influential Points")
 points(cooks.distance(fit_cube), pch=21, col="blue", bg=2)
@@ -634,14 +781,20 @@ abline(h=ext.outlr.thr.dn, lwd=2, col="red")
 
 ```
 
+##### Display Influential Points
+
 ```{r}
+# TODO
 paste("There are", sum(abs(dfbeta_values[, "Forest_Cover"])>threshold), "influential points for the estimator of Forest_Cover")
 paste("There are", sum(abs(dfbeta_values[, "Urbanization_Perc"])>threshold), "influential points for the estimator of Urbanization_Perc")
 paste("There are", sum(abs(dfbeta_values[, "GDP_per_Capita"])>threshold), "influential points for the estimator of GDP_per_Capita")
 paste("There are", sum(abs(dfbeta_values[, "rainfall_cube_root"])>threshold), "influential points for the estimator of rainfall_cube_root")
 ```
 
+#### Identify and Display Leverage Points
+
 ```{r}
+# TODO
 # leverage points
 plot(hatvalues(fit_cube),  type="h", main = "Leverage Points")
 threshold_leverage= 2*length(fit_cube$coef)/nrow(combined_data)
