@@ -198,6 +198,24 @@ View(combined_data)
 write.xlsx(combined_data, "combined_data.xlsx")
 ```
 
+### Deal with NA values
+
+```{r}
+combined_data$GDP_per_Capita[(is.na(combined_data$GDP_per_Capita))]
+combined_data[(is.na(combined_data$GDP_per_Capita)),]
+combined_data$GDP_per_Capita
+combined_data[combined_data$`Country Name`=="Eritrea",]
+
+combined_data[(is.na(combined_data$Rainfall_Depth)),]
+
+eritreaGDPavg = sum(combined_data[!(is.na(combined_data$GDP_per_Capita)) & combined_data$`Country Name` == "Eritrea", "GDP_per_Capita"])/(nrow(combined_data[!(is.na(combined_data$GDP_per_Capita)) & combined_data$`Country Name` == "Eritrea", "GDP_per_Capita"]))
+
+
+combined_data[(is.na(combined_data$GDP_per_Capita)) & combined_data$`Country Name` == "Eritrea", "GDP_per_Capita"]=eritreaGDPavg
+combined_data[(is.na(combined_data$GDP_per_Capita)) & combined_data$`Country Name` == "Eritrea", "GDP_per_Capita"]
+
+```
+
 ## Exploratory Data Analysis
 
 #### Scatter plots of Malaria Incidence and Forest Cover Percentage by Country
@@ -408,7 +426,7 @@ ggplot(malaria_long, aes(x = Year, y = `Country Name`, fill = value)) +
 
 ### Scatterplots by Country - Malaria Incidence (normalized by population) and Forest Cover Percentage per Year
 
-```{r fig.height=70, fig.width=14, message=FALSE, warning=FALSE}
+```{r eval=FALSE, fig.height=70, fig.width=14, message=FALSE, warning=FALSE, include=FALSE}
 # Scatter plot for all countries and years
 
 # Split the data by country
@@ -440,7 +458,7 @@ print(combined_plot_scatter)
 
 ### Scatterplots by Country - Malaria Incidence (normalized by population), Forest Cover Percentage, Rainfall Depth in mm\^3, GDP per Capita, and Urbanization Percentage per Year
 
-```{r fig.height=200, fig.width=15, message=FALSE, warning=FALSE}
+```{r eval=FALSE, fig.height=200, fig.width=15, message=FALSE, warning=FALSE, include=FALSE}
 # Function to create side-by-side histograms for a single country
 create_histograms = function(country_data, country_name) {
   malaria_plot = ggplot(country_data, aes(x = Year, y = `Malaria_Incidence`)) +
@@ -519,4 +537,119 @@ ggcorrplot(cor_matrix,
            tl.cex = 8,
            colors = c("red", "white", "forest green"),
            title = "Correlation Matrix of Various Factors", ggtheme = theme_gray())
+```
+
+## Report 2 - Linear Regression
+
+```{r}
+fit = lm(Malaria_Incidence ~ Forest_Cover + Urbanization_Perc + Rainfall_Depth + GDP_per_Capita, data = combined_data)
+qq_norm_res=qqnorm(residuals(fit),main = "Normal Q-Q Plot")
+qqnorm_model=lm(qq_norm_res$y~qq_norm_res$x)
+abline(a=qqnorm_model$coef[1], b=qqnorm_model$coef[2])
+summary(fit)
+
+# log transformation
+fit_log = lm(log(Malaria_Incidence) ~ Forest_Cover + Urbanization_Perc + Rainfall_Depth + GDP_per_Capita, data = combined_data)
+qq_norm_res=qqnorm(residuals(fit_log), main = "Normal Q-Q Plot - log(malaria)")
+qqnorm_model=lm(qq_norm_res$y~qq_norm_res$x)
+abline(a=qqnorm_model$coef[1], b=qqnorm_model$coef[2])
+
+# sqrt transformation
+fit_sqrt = lm(sqrt(Malaria_Incidence) ~ Forest_Cover + Urbanization_Perc + Rainfall_Depth + GDP_per_Capita, data = combined_data)
+qq_norm_res=qqnorm(residuals(fit_sqrt), main = "Normal Q-Q Plot - sqrt(malaria)")
+qqnorm_model=lm(qq_norm_res$y~qq_norm_res$x)
+abline(a=qqnorm_model$coef[1], b=qqnorm_model$coef[2])
+
+
+# cubed root transformation of rainfall
+rainfall_cube_root = (combined_data$Rainfall_Depth)**(1/3)
+fit_cube = lm(Malaria_Incidence ~ Forest_Cover + Urbanization_Perc + rainfall_cube_root + GDP_per_Capita, data = combined_data)
+qq_norm_res=qqnorm(residuals(fit_cube), main = "Normal Q-Q Plot - rainfall^(1/3)")
+summary(fit_cube)
+qqnorm_model=lm(qq_norm_res$y~qq_norm_res$x)
+abline(a=qqnorm_model$coef[1], b=qqnorm_model$coef[2])
+```
+
+```{r}
+# AIC and BIC
+model_list = list(fit, fit_cube, fit_log, fit_sqrt)
+# Function to print AIC and BIC for multiple models
+print_aic_bic <- function(model_list) {
+  # Create an empty data frame to store results
+  results <- data.frame(Model = character(), AIC = numeric(), BIC = numeric(), stringsAsFactors = FALSE)
+  
+  # Loop through the list of models and calculate AIC and BIC
+  for (i in seq_along(model_list)) {
+    model_name <- deparse(substitute(model_list[[i]]))
+    aic_value <- AIC(model_list[[i]])
+    bic_value <- BIC(model_list[[i]])
+    
+    # Append the results to the data frame
+    results <- rbind(results, data.frame(Model = model_name, AIC = aic_value, BIC = bic_value))
+  }
+  
+  # Print the results in a nice table format
+  print(results)
+}
+print_aic_bic(model_list)
+
+```
+
+```{r}
+
+# identify influential points for Forest_Cover
+plot(cooks.distance(fit_cube),  type="h", main = "Influential Points")
+points(cooks.distance(fit_cube), pch=21, col="blue", bg=2)
+
+# percent of observations that are influential
+avec=cooks.distance(fit_cube)
+out.q=quantile(avec, prob=c(0.25, 0.75))
+thr=out.q[2]+(out.q[2]-out.q[1])*3
+ind=which(avec>thr)
+paste(round(length(ind)/nrow(combined_data) * 100, 4), "% of our observations are influential.")
+
+
+# Let us measure influence of observations on the regression parameter for forest cover
+dfbeta_values=dfbetas(fit_cube)
+threshold=2/sqrt(nrow(combined_data))
+
+
+
+
+
+
+
+
+plot(dfbeta_values[, "Forest_Cover"], type='h', main = "Measure influence for Forest_Cover via DFBETA values")
+abline(h = threshold, lty = 2)
+abline(h = -threshold, lty = 2)
+
+# Let us do a boxplot of dfbeta for Forest_Cover
+boxplot(dfbeta_values[, "Forest_Cover"], main = "Boxplot of DFBETAs for Forest_Cover") 
+ext.outlr.thr.up=quantile(dfbeta_values[, "Forest_Cover"], prob=0.75)+3*IQR(dfbeta_values[, "Forest_Cover"])
+ext.outlr.thr.dn=quantile(dfbeta_values[, "Forest_Cover"], prob=0.25)-3*IQR(dfbeta_values[, "Forest_Cover"])
+abline(h=ext.outlr.thr.up, lwd=2, col="red")
+abline(h=ext.outlr.thr.dn, lwd=2, col="red")
+
+
+```
+
+```{r}
+paste("There are", sum(abs(dfbeta_values[, "Forest_Cover"])>threshold), "influential points for the estimator of Forest_Cover")
+paste("There are", sum(abs(dfbeta_values[, "Urbanization_Perc"])>threshold), "influential points for the estimator of Urbanization_Perc")
+paste("There are", sum(abs(dfbeta_values[, "GDP_per_Capita"])>threshold), "influential points for the estimator of GDP_per_Capita")
+paste("There are", sum(abs(dfbeta_values[, "rainfall_cube_root"])>threshold), "influential points for the estimator of rainfall_cube_root")
+```
+
+```{r}
+# leverage points
+plot(hatvalues(fit_cube),  type="h", main = "Leverage Points")
+threshold_leverage= 2*length(fit_cube$coef)/nrow(combined_data)
+abline(h=threshold_leverage)
+points(hatvalues(fit_cube), pch=21, col="blue", bg=2)
+
+
+paste("There are", sum(abs(hatvalues(fit_cube))>threshold), "leverage points")
+paste(round( sum(abs(hatvalues(fit_cube))>threshold)/nrow(combined_data) * 100, 4), "% of our observations are leverage points")
+
 ```
