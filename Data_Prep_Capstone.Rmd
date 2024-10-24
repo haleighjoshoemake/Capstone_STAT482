@@ -22,6 +22,9 @@ library(GGally)
 library(plotly)
 library(scales)
 library(ggcorrplot)
+library(nlme)
+library(readxl)
+library(ggrepel)
 
 
 # turn off scientific notation format output
@@ -39,12 +42,6 @@ clean_char = function(text){
 ```{r}
 # Import Subsaharan African countries list
 countries = read_excel("~/STAT 482/subsaharan_countries.xlsx", sheet = "Countries", col_names =  TRUE)
-
-# Assign Regions
-Eastern_Africa = c("Eritrea", "Djibouti", "Somalia", "Kenya", "Tanzania", "Malawi", "Zimbabwe", "Zambia", "Sudan", "Madagascar", "Rwanda", "Burundi", "Ethiopia")
-Central_Africa = c("Chad", "Central African Republic", "Cameroon", "Gabon", "Equatorial Guinea", "Congo", "Dem. Rep. Congo", "Angolia", "Sao Tome and Principe")
-South_Africa = c("Nambia", "Botswana", "Eswatini", "South Africa")
-Western_Africa = c("Mauritania", "Mali", "Niger", "Nigeria", "Benin", "Ivory Coast", "Ghana", "Togo", "Burkina Faso", "Guinea", "Sierra Leone", "Guinnea-Bissau", "Senegal", "Gambia")
 
 population = read_excel("~/STAT 482/Population.xls", sheet = "Data", col_names =  TRUE)
 
@@ -157,7 +154,7 @@ urbanization = urbanization[,!(colnames(urbanization) %in% to_remove)]
 
 ```{r}
 # reorder the 'country' variable in order of most north to most south in latitude
-countries_ordered = c("Djibouti", "Eritrea", "Sudan", "Chad", "Niger", "Mali", "Mauritania", "Senegal", "Gambia, The", "Guinea-Bissau", "Guinea", "Sierra Leone", "Liberia", "Burkina Faso", "Ghana", "Togo", "Benin", "Nigeria", "Cameroon", "Central African Republic", "South Sudan", "Ethiopia", "Somalia", "Equatorial Guinea", "Gabon", "Congo, Rep.", "Congo, Dem. Rep.", "Uganda", "Rwanda", "Burundi", "Kenya", "Tanzania", "Sao Tome and Principe", "Angola", "Zambia", "Malawi", "Mozambique", "Zimbabwe", "Namibia", "Botswana", "Eswatini", "South Africa", "Madagascar")
+countries_ordered = c("Eritrea", "Djibouti", "Chad", "Niger", "Mali", "Mauritania", "Sudan", "Ethiopia", "Somalia", "Central African Republic", "Cameroon", "Nigeria", "Benin", "Burkina Faso", "Ghana", "Togo", "Equatorial Guinea", "Gabon", "Congo, Rep.", "Congo, Dem. Rep.", "Uganda", "Kenya", "Rwanda", "Burundi", "Tanzania", "Angola", "Zambia", "Malawi", "Mozambique", "Zimbabwe", "Botswana", "Namibia", "South Africa", "Eswatini", "Madagascar", "Senegal", "Gambia, The", "Guinea-Bissau", "Guinea", "Sierra Leone", "Liberia", "Sao Tome and Principe")
 
 # assign the ordered country names to malaria and forest dataset
 malaria$`Country Name` = factor(malaria$`Country Name`, levels = countries_ordered)
@@ -180,7 +177,6 @@ gdp_long = gdp %>%
 urban_long = urbanization %>%
   pivot_longer(cols = starts_with("2"), names_to = "Year", values_to = "Urbanization_Perc")
 
-
 # Merge datasets
 combined_data = malaria_long %>%
   left_join(forest_long, by = c("Country Name", "Year")) %>%
@@ -190,36 +186,43 @@ combined_data = malaria_long %>%
 
 combine_remove = as.character(c("Country Code.x", "Country Code.x.x", "Country Code.y.y", "Country Code.y"))
 combined_data = combined_data[,!(colnames(combined_data) %in% combine_remove)]
-
-write.xlsx(combined_data, "combined_data.xlsx")
 ```
 
 #### Handle NAs
 
 ```{r}
-# TODO
-combined_data$GDP_per_Capita[(is.na(combined_data$GDP_per_Capita))]
-combined_data[(is.na(combined_data$GDP_per_Capita)),]
-combined_data$GDP_per_Capita
-combined_data[combined_data$`Country Name`=="Eritrea",]
 
-combined_data[(is.na(combined_data$Rainfall_Depth)),]
+temp = combined_data
 
-eritreaGDPavg = sum(combined_data[!(is.na(combined_data$GDP_per_Capita)) & combined_data$`Country Name` == "Eritrea", "GDP_per_Capita"])/(nrow(combined_data[!(is.na(combined_data$GDP_per_Capita)) & combined_data$`Country Name` == "Eritrea", "GDP_per_Capita"]))
+# Filter the dataset for non-missing GDP per capita values and for Eritrea
+eritrea_data = temp[!is.na(temp$GDP_per_Capita) & temp$`Country Name` == "Eritrea", "GDP_per_Capita"]
+
+# Calculate the average GDP per capita for Eritrea
+eritreaGDPavg = sum(eritrea_data) / nrow(eritrea_data)
+
+# Replace NA values with the calculated average
+temp$GDP_per_Capita[is.na(temp$GDP_per_Capita) & temp$`Country Name` == "Eritrea"] = eritreaGDPavg
 
 
-combined_data[(is.na(combined_data$GDP_per_Capita)) & combined_data$`Country Name` == "Eritrea", "GDP_per_Capita"]=eritreaGDPavg
-combined_data[(is.na(combined_data$GDP_per_Capita)) & combined_data$`Country Name` == "Eritrea", "GDP_per_Capita"]
+# Filter the dataset for non-missing Rainfall_Depth values and for Sudan
+sudan_data = temp[!is.na(temp$Rainfall_Depth) & temp$`Country Name` == "Sudan", "Rainfall_Depth"]
 
+# Calculate the average Rainfall_Depth for Sudan
+sudanRainfallAvg = sum(sudan_data) / nrow(sudan_data)
+
+# Replace NA values with the calculated average
+temp$Rainfall_Depth[is.na(temp$Rainfall_Depth) & temp$`Country Name` == "Sudan"] = sudanRainfallAvg
+
+combined_data = temp
 ```
 
----
+------------------------------------------------------------------------
 
 ## Report 1: Exploratory Data Analysis
 
 #### Scatter plots of Malaria Incidence and Forest Cover Percentage by Country
 
-```{r fig.height=11, fig.width=10, message=FALSE, warning=FALSE, include=FALSE}
+```{r fig.height=11, fig.width=10, message=FALSE, warning=FALSE}
 
 # make the year numeric for plotting
 combined_data$Year = as.numeric(combined_data$Year)
@@ -261,65 +264,6 @@ ggplot(data = combined_data, aes(x = Year,
   guides(color = guide_legend(ncol = 1, title = NULL))
 ```
 
-#### Summary Data of Malaria Incidence and Forest Cover Percentage by Country
-
-```{r eval=FALSE, include=FALSE}
-# summarize malaria incidence data by country - rows are sorted by mean incidence
-(combined_data %>%
-  group_by(`Country Name`) %>%
-  summarize(
-    Min_Incidence = min(Malaria_Incidence),
-    Max_Incidence = max(Malaria_Incidence),
-    Mean_Incidence = mean(Malaria_Incidence),
-    Median_Incidence = median(Malaria_Incidence),
-    SD_Incidence = sd(Malaria_Incidence)) %>%
-    arrange(Mean_Incidence)
-  )
-
-
-# summarize forest cover % by country - rows are sorted by mean forest cover %
-(combined_data %>%
-  group_by(`Country Name`) %>%
-  summarize(
-    Min_Perc_Cover = min(Forest_Cover),
-    Max_Perc_Cover = max(Forest_Cover),
-    Mean_Perc_Cover = mean(Forest_Cover),
-    Median_Perc_Cover = median(Forest_Cover),
-    SD_Perc_Cover = sd(Forest_Cover)) %>%
-    arrange(Mean_Perc_Cover))
-```
-
-#### Histograms of Malaria Incidence and Forest Cover Percentage by Country
-
-```{r eval=FALSE, fig.height=40, fig.width=10, message=FALSE, warning=FALSE, include=FALSE}
-
-# plot the histograms of forest cover for each country
-ggplot(data = combined_data, aes(x = Forest_Cover)) +
-  geom_histogram(fill = "forest green", color = "black") +
-  labs(title = "Histogram of Forest Cover Percentage by Country", x = "Forest Cover Percentage", y = "Frequency") +
-  theme(
-    plot.title = element_text(size = 20),
-    axis.title.x = element_text(size = 15),
-    axis.title.y = element_text(size = 15),
-    axis.text = element_text(size = 9)
-  ) +
-  facet_wrap(~ `Country Name`, ncol = 3, scales = "free_x")
-
-
-
-# plot the histograms of malaria incidence for each country
-ggplot(data = combined_data, aes(x = Malaria_Incidence)) +
-  geom_histogram(fill = "forest green", color = "black") +
-  labs(title = "Histogram of Malaria Incidence by Country", x = "Malaria Incidence", y = "Frequency") +
-  theme(
-    plot.title = element_text(size = 20),
-    axis.title.x = element_text(size = 15),
-    axis.title.y = element_text(size = 15),
-    axis.text = element_text(size = 9)
-  ) +
-  facet_wrap(~ `Country Name`, ncol = 3, scales = "free_x")
-```
-
 #### Box plots of Malaria Incidence and Forest Cover Percentage by Country (one plot)
 
 ```{r fig.height=10, fig.width=11, message=FALSE, warning=FALSE}
@@ -347,36 +291,6 @@ ggplot(data = combined_data, aes(x = `Country Name`, y = Forest_Cover)) +
     axis.title.y = element_text(size = 15),
     axis.text = element_text(size = 12),
     axis.text.x = element_text(angle = 45, hjust = 1))
-```
-
-#### Box plots of Malaria Incidence and Forest Cover Percentage by Country (separate plots)
-
-```{r eval=FALSE, fig.height=40, fig.width=10, message=FALSE, warning=FALSE, include=FALSE}
-
-#  boxplot of malaria incidence by country - separate plots
-ggplot(data = combined_data, aes(x = Forest_Cover)) +
-  geom_boxplot(fill = "lightblue", color = "black", outlier.color = "red") +
-  labs(title = "Boxplot of Forest Cover Percentage by Country", x = "", y = "") +
-  theme(
-    plot.title = element_text(size = 20),
-    axis.title.x = element_text(size = 15),
-    axis.title.y = element_text(size = 15),
-    axis.text.y = element_blank()
-  ) +
-  facet_wrap(~ `Country Name`, ncol = 3, scales = "free_x")
-
-
-#  boxplot of malaria incidence by country - separate plots
-ggplot(data = combined_data, aes(x = Malaria_Incidence)) +
-  geom_boxplot(fill = "lightblue", color = "black", outlier.color = "red") +
-  labs(title = "Boxplot of Malaria Incidence by Country", x = "", y = "") +
-  theme(
-    plot.title = element_text(size = 20),
-    axis.title.x = element_text(size = 15),
-    axis.title.y = element_text(size = 15),
-    axis.text.y = element_blank()
-  ) +
-  facet_wrap(~ `Country Name`, ncol = 3, scales = "free_x")
 ```
 
 #### Heat map of Malaria Incidence and Forest Cover Percentage by Country
@@ -423,7 +337,7 @@ ggplot(malaria_long, aes(x = Year, y = `Country Name`, fill = value)) +
 
 #### Scatterplots by Country - Malaria and Forest Cover per Year
 
-```{r eval=FALSE, fig.height=70, fig.width=14, message=FALSE, warning=FALSE, include=FALSE}
+```{r fig.height=70, fig.width=14, message=FALSE, warning=FALSE}
 # Scatter plot for all countries and years
 
 # Split the data by country
@@ -455,7 +369,7 @@ print(combined_plot_scatter)
 
 #### Scatterplots by Country - All Covariates and Response
 
-```{r eval=FALSE, fig.height=200, fig.width=15, message=FALSE, warning=FALSE, include=FALSE}
+```{r fig.height=200, fig.width=15, message=FALSE, warning=FALSE}
 # Function to create side-by-side histograms for a single country
 create_histograms = function(country_data, country_name) {
   malaria_plot = ggplot(country_data, aes(x = Year, y = `Malaria_Incidence`)) +
@@ -531,7 +445,7 @@ covariates = c("Forest_Cover", "Urbanization_Perc", "Rainfall_Depth", "GDP_per_C
 
 # Centralize the covariates
 for (covariate in covariates) {
-  combined_data[[paste0(covariate, "_centered")]] = combined_data[[covariate]] - mean(combined_data[[covariate]], na.rm = TRUE)
+  combined_data[[paste0(covariate)]] = combined_data[[covariate]] - mean(combined_data[[covariate]], na.rm = TRUE)
 }
 ```
 
@@ -580,10 +494,11 @@ for (year in years) {
   models_list[[as.character(year)]] = summary(model)
 }
 
-# Extract p-values, standard errors, and estimates
+# Extract p-values, standard errors, estimates, and t-statistics
 p_values = data.frame()
 standard_errors = data.frame()
 estimates = data.frame()
+t_statistics = data.frame()
 
 for (year in names(models_list)) {
   model_summary = models_list[[year]]
@@ -592,16 +507,20 @@ for (year in names(models_list)) {
   p_values[year, names(coefs[, "Pr(>|t|)"])] = coefs[, "Pr(>|t|)"]
   standard_errors[year, names(coefs[, "Std. Error"])] = coefs[, "Std. Error"]
   estimates[year, names(coefs[, "Estimate"])] = coefs[, "Estimate"]
+  t_statistics[year, names(coefs[, "t value"])] = coefs[, "t value"]
 }
+
 p_values$Year = c(2000:2020)
 standard_errors$Year = c(2000:2020)
 estimates$Year = c(2000:2020)
-
+t_statistics$Year = c(2000:2020)
 
 # Convert to long format for plotting
 p_values_long = melt(p_values, id.vars = "Year", variable.name = "Variable", value.name = "P_Value")
 standard_errors_long = melt(standard_errors, id.vars = "Year", variable.name = "Variable", value.name = "Standard_Error")
 estimates_long = melt(estimates, id.vars = "Year", variable.name = "Variable", value.name = "Estimate")
+t_statistics_long = melt(t_statistics, id.vars = "Year", variable.name = "Variable", value.name = "T_Value")
+
 ```
 
 ##### Plot Statistics from Models per Year
@@ -625,17 +544,6 @@ ggplot(p_values_long, aes(x = Year, y = P_Value, color = Variable)) +
   scale_color_manual(values = variable_colors) +
   labs(title = "P-Values Over Years", y = "P-Value")
 
-# Plotting standard errors for each variable
-for (variable in unique(standard_errors_long$Variable)) {
-  plot = ggplot(subset(standard_errors_long, Variable == variable), aes(x = Year, y = Standard_Error, color = Variable)) +
-    geom_line() +
-    geom_point() +
-    scale_color_manual(values = variable_colors) +
-    labs(title = paste("Standard Errors Over Years for", variable), y = "Standard Error") +
-    theme_minimal()
-  
-  print(plot)  # Display the plot
-}
 
 # Plotting estimates for each variable
 for (variable in unique(estimates_long$Variable)) {
@@ -662,7 +570,7 @@ models_list = list()
 years = unique(combined_data$Year)
 
 # Data frame to store goodness-of-fit metrics
-goodness_of_fit = data.frame(Year = integer(), F_statistic = numeric(), p_value = numeric(), AIC = numeric(), BIC = numeric())
+goodness_of_fit = data.frame(Year = integer(), p_value = numeric(), Adjusted_R_squared = numeric())
 
 # Fit the model for each year and store the goodness-of-fit metrics
 for (year in years) {
@@ -676,60 +584,25 @@ for (year in years) {
   
   # Perform the F-test
   f_statistic = model_summary$fstatistic["value"]
-  p_value = pf(f_statistic, numdf, dendf, lower.tail = FALSE)["value"]
+  numdf = model_summary$fstatistic["numdf"]
+  dendf = model_summary$fstatistic["dendf"]
+  p_value = pf(f_statistic, numdf, dendf, lower.tail = FALSE)
   
-  # Calculate AIC and BIC
-  aic = AIC(model)
-  bic = BIC(model)
-  
-  # Extract R-squared and Adjusted R-squared
-  r_squared = model_summary$r.squared
+  # Extract Adjusted R-squared
   adjusted_r_squared = model_summary$adj.r.squared
   
-
-  
   # Store the metrics in the data frame
-  goodness_of_fit = rbind(goodness_of_fit, data.frame(Year = year, F_statistic = f_statistic, p_value = p_value, AIC = aic, BIC = bic, R_squared = r_squared, Adjusted_R_squared = adjusted_r_squared))
+  goodness_of_fit = rbind(goodness_of_fit, data.frame(Year = year, p_value = p_value, Adjusted_R_squared = adjusted_r_squared))
 }
-
-
 
 # Print the goodness-of-fit metrics
 print(goodness_of_fit)
-
-# Plot F-statistic over the years
-ggplot(goodness_of_fit, aes(x = Year, y = F_statistic)) +
-  geom_line() +
-  geom_point() +
-  labs(title = "F-Statistic Over Years", x = "Year", y = "F-Statistic") +
-  theme_minimal()
 
 # Plot p-value over the years
 ggplot(goodness_of_fit, aes(x = Year, y = p_value)) +
   geom_line() +
   geom_point() +
   labs(title = "P-Value Over Years", x = "Year", y = "P-Value") +
-  theme_minimal()
-
-# Plot AIC over the years
-ggplot(goodness_of_fit, aes(x = Year, y = AIC)) +
-  geom_line() +
-  geom_point() +
-  labs(title = "AIC Over Years", x = "Year", y = "AIC") +
-  theme_minimal()
-
-# Plot BIC over the years
-ggplot(goodness_of_fit, aes(x = Year, y = BIC)) +
-  geom_line() +
-  geom_point() +
-  labs(title = "BIC Over Years", x = "Year", y = "BIC") +
-  theme_minimal()
-
-# Plot R-squared over the years
-ggplot(goodness_of_fit, aes(x = Year, y = R_squared)) +
-  geom_line() +
-  geom_point() +
-  labs(title = "R-Squared Over Years", x = "Year", y = "R-Squared") +
   theme_minimal()
 
 # Plot Adjusted R-squared over the years
@@ -740,69 +613,115 @@ ggplot(goodness_of_fit, aes(x = Year, y = Adjusted_R_squared)) +
   theme_minimal()
 ```
 
-#### Identify Influential Points
+## Report 3: Mixed Effects Model
 
-```{r}
-# TODO
-# identify influential points for Forest_Cover
-plot(cooks.distance(fit_cube),  type="h", main = "Influential Points")
-points(cooks.distance(fit_cube), pch=21, col="blue", bg=2)
+#### Model Selection
 
-# percent of observations that are influential
-avec=cooks.distance(fit_cube)
-out.q=quantile(avec, prob=c(0.25, 0.75))
-thr=out.q[2]+(out.q[2]-out.q[1])*3
-ind=which(avec>thr)
-paste(round(length(ind)/nrow(combined_data) * 100, 4), "% of our observations are influential.")
+```{r warning=FALSE}
+# DATA PREP
+# Rename 'Country Name' to 'country_name'
+mixed_data = combined_data %>%
+  dplyr::rename(country_name = `Country Name`)
 
+# Convert 'country_name' to a factor
+mixed_data$country_name = as.factor(mixed_data$country_name)
 
-# Let us measure influence of observations on the regression parameter for forest cover
-dfbeta_values=dfbetas(fit_cube)
-threshold=2/sqrt(nrow(combined_data))
-
-
+# FIT MODELS
+# only random forest cover
+fit.nlme1 = lme(Malaria_Incidence ~ Rainfall_Depth + Urbanization_Perc + Forest_Cover, 
+                 random = ~ Forest_Cover | country_name, 
+                 data = mixed_data, 
+                 control = lmeControl(opt = "optim", maxIter = 1000, msMaxIter = 1000))
 
 
+# random forest cover and rainfall depth
+fit.nlme2 = lme(Malaria_Incidence ~ Rainfall_Depth + Urbanization_Perc + Forest_Cover, 
+                 random = ~ Rainfall_Depth + Forest_Cover | country_name, 
+                 data = mixed_data, 
+                 control = lmeControl(opt = "optim", maxIter = 1000, msMaxIter = 1000))
 
 
+# remove rainfall depth from model, only forest cover is random 
+fit.nlme3 = lme(Malaria_Incidence ~ Urbanization_Perc + Forest_Cover + Year, 
+                 random = ~ Forest_Cover | country_name, 
+                 data = mixed_data, 
+                 control = lmeControl(opt = "optim", maxIter = 1000, msMaxIter = 1000))
 
 
-plot(dfbeta_values[, "Forest_Cover"], type='h', main = "Measure influence for Forest_Cover via DFBETA values")
-abline(h = threshold, lty = 2)
-abline(h = -threshold, lty = 2)
-
-# Let us do a boxplot of dfbeta for Forest_Cover
-boxplot(dfbeta_values[, "Forest_Cover"], main = "Boxplot of DFBETAs for Forest_Cover") 
-ext.outlr.thr.up=quantile(dfbeta_values[, "Forest_Cover"], prob=0.75)+3*IQR(dfbeta_values[, "Forest_Cover"])
-ext.outlr.thr.dn=quantile(dfbeta_values[, "Forest_Cover"], prob=0.25)-3*IQR(dfbeta_values[, "Forest_Cover"])
-abline(h=ext.outlr.thr.up, lwd=2, col="red")
-abline(h=ext.outlr.thr.dn, lwd=2, col="red")
+# Compare models
+anova(fit.nlme1, fit.nlme2, fit.nlme3)
 
 
+summary(fit.nlme1) # only forest cover is random
+summary(fit.nlme2) # forest cover and rainfall depth are random
+summary(fit.nlme3) # remove rainfall depth from model, only forest cover random
 ```
 
-##### Display Influential Points
+#### Model Visualizations
 
-```{r}
-# TODO
-paste("There are", sum(abs(dfbeta_values[, "Forest_Cover"])>threshold), "influential points for the estimator of Forest_Cover")
-paste("There are", sum(abs(dfbeta_values[, "Urbanization_Perc"])>threshold), "influential points for the estimator of Urbanization_Perc")
-paste("There are", sum(abs(dfbeta_values[, "GDP_per_Capita"])>threshold), "influential points for the estimator of GDP_per_Capita")
-paste("There are", sum(abs(dfbeta_values[, "rainfall_cube_root"])>threshold), "influential points for the estimator of rainfall_cube_root")
-```
+```{r warning=FALSE}
+# Create visuals for the model with only Forest_Cover as the random effect
 
-#### Identify and Display Leverage Points
+# Extract residuals from the model
+residuals = residuals(fit.nlme3)
 
-```{r}
-# TODO
-# leverage points
-plot(hatvalues(fit_cube),  type="h", main = "Leverage Points")
-threshold_leverage= 2*length(fit_cube$coef)/nrow(combined_data)
-abline(h=threshold_leverage)
-points(hatvalues(fit_cube), pch=21, col="blue", bg=2)
+# Create QQ plot
+qqnorm(residuals)
+qqline(residuals, col = "red")
 
 
-paste("There are", sum(abs(hatvalues(fit_cube))>threshold), "leverage points")
-paste(round( sum(abs(hatvalues(fit_cube))>threshold)/nrow(combined_data) * 100, 4), "% of our observations are leverage points")
 
+# Extract fixed effects coefficients and their confidence intervals
+fixed_effects <- summary(fit.nlme3)$tTable
+fixed_effects_df <- data.frame(
+  Term = rownames(fixed_effects),
+  Estimate = fixed_effects[, "Value"],
+  Std_Error = fixed_effects[, "Std.Error"],
+  t_value = fixed_effects[, "t-value"],
+  P_Value = fixed_effects[, "p-value"]
+)
+fixed_effects_df$CI_Lower <- fixed_effects_df$Estimate - 1.96 * fixed_effects_df$Std_Error
+fixed_effects_df$CI_Upper <- fixed_effects_df$Estimate + 1.96 * fixed_effects_df$Std_Error
+
+# Remove the intercept from the data frame
+fixed_effects_df <- fixed_effects_df[fixed_effects_df$Term != "(Intercept)", ]
+
+# Plot fixed effects coefficients with their confidence intervals
+ggplot(fixed_effects_df, aes(x = Term, y = Estimate)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = CI_Lower, ymax = CI_Upper), width = 0.2) +
+  labs(title = "Fixed Effects Coefficients with Confidence Intervals", x = "Estimate", y = "Value") +
+  theme_minimal()
+
+
+
+
+
+# Extract random effects for each country
+random_effects <- ranef(fit.nlme3)
+random_effects_df <- as.data.frame(random_effects)
+
+# Rename columns to avoid issues with special characters
+colnames(random_effects_df) <- c("Random_Intercept", "Random_Slope_Forest_Cover")
+
+# Plot random effects for each country with non-overlapping text labels
+ggplot(random_effects_df, aes(x = Random_Intercept, y = Random_Slope_Forest_Cover, label = rownames(random_effects_df))) +
+  geom_point() +
+  geom_text_repel(size = 2.5) +
+  labs(title = "Random Effects for Each Country", x = "Random Intercept", y = "Random Slope for Forest Cover") +
+  theme_minimal()
+
+
+
+
+# Plot residuals vs fitted values
+residuals <- resid(fit.nlme3)
+fitted_values <- fitted(fit.nlme3)
+residuals_df <- data.frame(Fitted_Values = fitted_values, Residuals = residuals)
+
+ggplot(residuals_df, aes(x = Fitted_Values, y = Residuals)) +
+  geom_point() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(title = "Residuals vs Fitted Values", x = "Fitted Values", y = "Residuals") +
+  theme_minimal()
 ```
